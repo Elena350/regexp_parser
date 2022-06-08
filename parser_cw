@@ -1,0 +1,145 @@
+#a|a|b -> None (not valid) 
+#a** -> None  
+#(hi! -> None 
+#a(a|b) -> Str([Normal('a'), Or(Normal('a'), Normal('b'))])
+#"(a.*)|(bb)" -> Or(Str([Normal('a'), ZeroOrMore(Any())]), Str([Normal('b'), Normal('b')]))
+#"((ab)|cv)*|k" -> Or(ZeroOrMore(Or(Str([Normal("a"), Normal("b")]), Str([Normal("c"), Normal("v")]))), Normal("k"))
+
+class RegExp:
+     def __init__(self, *args):
+         self.args = args
+     def __repr__(self):
+         args = ", ".join(map(repr, self.args))
+         return f"{self.__class__.__name__}({args})"
+     def __eq__(self, other):
+         return type(self) is type(other) and self.args == other.args
+class Normal(RegExp):
+  pass
+class Any(RegExp): 
+  pass 
+class Or(RegExp):
+  pass   
+class Str(RegExp): 
+  pass
+class ZeroOrMore(RegExp):
+  pass  
+NORMAL, ANY, ZERO_OR, OR, LPAR, RPAR, EOF = 'NORMAL', 'ANY', 'ZERO_OR', 'OR', 'LPAR', 'RPAR', 'EOF'    
+class Token:
+  def __init__(self, name, value):
+    self.name = name 
+    self.value = value  
+  def __str__(self):
+    return f'{self.name}({self.value})' 
+  def __repr__(self):
+    return self.__str__() 
+class Parser:
+    def __init__(self, text):        
+        self.text = text        
+        self.error = 0 
+        self.pos = 0     
+        self.par = 0   
+        self.curr_char = self.text[self.pos]
+        self.curr_token = self.get_next_token()
+          
+        
+    
+    def advance(self):
+      self.pos += 1
+      if self.pos > len(self.text)-1:
+        self.curr_char = None
+      else:
+        self.curr_char = self.text[self.pos]  
+        
+    def get_next_token(self):                     
+        while self.curr_char is not None:          
+          if self.curr_char not in '*|().':
+              token = Token(NORMAL, Normal(self.curr_char))              
+              self.advance()              
+              return token
+          if self.curr_char == '.':
+              token = Token(ANY, Any())  
+              self.advance()  
+              return token
+          if self.curr_char == '*':
+              token = Token(ZERO_OR, '*')   
+              self.advance()            
+              return token 
+          if self.curr_char == '|':
+              token = Token(OR, '|')
+              self.advance()            
+              return token
+          if self.curr_char == '(':
+              self.par += 1              
+              self.advance()                           
+              return Token(LPAR, '(')   
+          if self.curr_char == ')': 
+              self.par -= 1             
+              self.advance()              
+              return Token(RPAR, ')')                  
+        return Token(EOF, 'EOF') 
+    def eat(self, token_type):                                    
+        if self.curr_token.name == token_type:
+            self.curr_token = self.get_next_token()                       
+        else:            
+            self.error += 1                 
+            
+    def elem(self):          
+      token = self.curr_token                
+      if token.name == NORMAL:
+        node = token.value             
+        self.eat(NORMAL)         
+        if self.curr_token.name == ZERO_OR:
+          self.eat(ZERO_OR)          
+          node = ZeroOrMore(node)                      
+        return node
+      if token.name == ANY:
+        self.eat(ANY)
+        node = Any()  
+        if self.curr_token.name == ZERO_OR: 
+          self.eat(ZERO_OR)          
+          node = ZeroOrMore(node)               
+        return node            
+      if token.name == LPAR:
+        self.eat(LPAR)        
+        node = self.expr()               
+        self.eat(RPAR)         
+        if self.curr_token.name == ZERO_OR: 
+          self.eat(ZERO_OR)          
+          node = ZeroOrMore(node)             
+        return node   
+               
+    def term(self):      
+      node = self.elem()              
+      if not node:
+        self.error += 1
+      lst = [node]      
+      while self.curr_token.name in [NORMAL, ANY, LPAR]:  
+        lst.append(self.elem())   
+        node = Str(lst) 
+        if None in lst:
+          self.error += 1 
+      if self.curr_token.name == ZERO_OR:
+        self.error += 1                
+      return node   
+         
+    def expr(self):       
+      while self.curr_token:           
+        node = self.term()                            
+        if node: 
+          if self.curr_token.name == OR:
+            self.eat(OR)
+            node1 = self.term()                    
+            node = Or(node, node1) 
+            if self.curr_token.name == OR:
+              self.error += 1                        
+        return node     
+       
+string = 'PQOt,Xgpb\'&<Y\\4INo/r)\tkHxC\ns1`jVB{D9MATEJ3F-2|>$]ShG:"+8cRL0;_(qne\x0b'
+def parse_regexp(indata):
+  if indata:
+    parser = Parser(indata)           
+    result = parser.expr()       
+    if parser.error == 0 and parser.par == 0:    
+      return result 
+       
+print(parse_regexp(string))        
